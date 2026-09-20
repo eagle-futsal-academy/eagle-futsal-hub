@@ -12,6 +12,7 @@ import InvoicePrint from './pages/academy/InvoicePrint'
 import Performance from './pages/academy/Performance'
 import Finance from './pages/Finance'
 import Marketing from './pages/Marketing'
+import Advisory from './pages/Advisory'
 import { useData } from './contexts/DataContext'
 import { useEffect } from 'react'
 
@@ -50,7 +51,7 @@ export default function App() {
           <Route path="/academy/billing" element={<Billing />} />
           <Route path="/performance" element={<Performance />} />
           <Route path="/finance" element={<Finance />} />
-          <Route path="/advisory" element={<ComingSoon title="C-Level Advisory" />} />
+          <Route path="/advisory" element={<Advisory />} />
           <Route path="/events" element={<ComingSoon title="Manajemen Event" />} />
           <Route path="/marketing" element={<Marketing />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
