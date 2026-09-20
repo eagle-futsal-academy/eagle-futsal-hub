@@ -47,7 +47,7 @@ const NAV_ITEMS: NavGroup[] = [
     group: 'Analitik',
     items: [
       { label: 'Performa Atlet', path: '/performance', icon: Activity },
-      { label: 'Keuangan', path: '/finance', icon: DollarSign, disabled: true },
+      { label: 'Keuangan', path: '/finance', icon: DollarSign },
       { label: 'Advisory C-Level', path: '/advisory', icon: Target, disabled: true },
       { label: 'Manajemen Event', path: '/events', icon: CalendarRange, disabled: true },
       { label: 'Marketing', path: '/marketing', icon: Megaphone, disabled: true },
