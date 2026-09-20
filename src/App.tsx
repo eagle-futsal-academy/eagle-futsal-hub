@@ -11,6 +11,7 @@ import Billing from './pages/academy/Billing'
 import InvoicePrint from './pages/academy/InvoicePrint'
 import Performance from './pages/academy/Performance'
 import Finance from './pages/Finance'
+import Marketing from './pages/Marketing'
 import { useData } from './contexts/DataContext'
 import { useEffect } from 'react'
 
@@ -51,7 +52,7 @@ export default function App() {
           <Route path="/finance" element={<Finance />} />
           <Route path="/advisory" element={<ComingSoon title="C-Level Advisory" />} />
           <Route path="/events" element={<ComingSoon title="Manajemen Event" />} />
-          <Route path="/marketing" element={<ComingSoon title="Marketing & Konten" />} />
+          <Route path="/marketing" element={<Marketing />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
         <Route path="/academy/invoice/print/:id" element={<InvoicePrint />} />
