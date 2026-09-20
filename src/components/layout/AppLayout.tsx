@@ -49,7 +49,7 @@ const NAV_ITEMS: NavGroup[] = [
       { label: 'Performa Atlet', path: '/performance', icon: Activity },
       { label: 'Keuangan', path: '/finance', icon: DollarSign },
       { label: 'Advisory C-Level', path: '/advisory', icon: Target },
-      { label: 'Manajemen Event', path: '/events', icon: CalendarRange, disabled: true },
+      { label: 'Manajemen Event', path: '/events', icon: CalendarRange },
       { label: 'Marketing & Registrasi', path: '/marketing', icon: Megaphone },
     ]
   }

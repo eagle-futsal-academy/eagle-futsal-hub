@@ -13,18 +13,9 @@ import Performance from './pages/academy/Performance'
 import Finance from './pages/Finance'
 import Marketing from './pages/Marketing'
 import Advisory from './pages/Advisory'
+import Events from './pages/Events'
 import { useData } from './contexts/DataContext'
 import { useEffect } from 'react'
-
-const ComingSoon = ({ title }: { title: string }) => (
-  <div className="flex items-center justify-center h-64">
-    <div className="text-center">
-      <div className="text-6xl mb-4">🚧</div>
-      <h2 className="text-xl font-bold text-slate-700 mb-2">{title}</h2>
-      <p className="text-sm text-slate-400">Modul ini sedang dalam pengembangan</p>
-    </div>
-  </div>
-);
 
 export default function App() {
   const { notification } = useData();
@@ -52,7 +43,7 @@ export default function App() {
           <Route path="/performance" element={<Performance />} />
           <Route path="/finance" element={<Finance />} />
           <Route path="/advisory" element={<Advisory />} />
-          <Route path="/events" element={<ComingSoon title="Manajemen Event" />} />
+          <Route path="/events" element={<Events />} />
           <Route path="/marketing" element={<Marketing />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
