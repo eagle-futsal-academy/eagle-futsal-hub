@@ -1,10 +1,20 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Calendar, CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react';
+import { 
+  Calendar, 
+  CheckCircle2, 
+  Clock, 
+  Sparkles, 
+  Smartphone, 
+  Search, 
+  CheckCheck 
+} from 'lucide-react';
 
 interface Student {
   id: string;
   name: string;
+  full_name?: string;
+  jersey_number?: number;
   age_cohort: string;
 }
 
@@ -14,17 +24,15 @@ interface AttendanceRecord {
   date: string;
   status: 'present' | 'absent' | 'late' | 'excused';
   session_type: string;
-  students?: {
-    name: string;
-    age_cohort: string;
-  };
 }
 
 export default function Attendance() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [sessionType, setSessionType] = useState('Latihan');
+  const [sessionType, setSessionType] = useState<'training' | 'match'>('training');
+  const [selectedCohort, setSelectedCohort] = useState<string>('U-12');
+  const [search, setSearch] = useState('');
   const [students, setStudents] = useState<Student[]>([]);
-  const [attendance, setAttendance] = useState<Record<string, AttendanceRecord>>({});
+  const [attendance, setAttendance] = useState<Record<string, 'present' | 'absent' | 'late' | 'excused'>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,17 +42,17 @@ export default function Attendance() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Get all active students
+      // 1. Get all active students
       const { data: studentsData, error: studentsError } = await supabase
         .from('students')
-        .select('id, name, age_cohort')
+        .select('id, name, full_name, jersey_number, age_cohort')
         .eq('status', 'active')
-        .order('name');
+        .order('jersey_number', { ascending: true, nullsFirst: false });
         
       if (studentsError) throw studentsError;
       setStudents(studentsData || []);
 
-      // Get attendance for selected date and session_type
+      // 2. Get attendance for selected date and session_type
       const { data: attendanceData, error: attendanceError } = await supabase
         .from('attendance')
         .select('*')
@@ -53,206 +61,300 @@ export default function Attendance() {
         
       if (attendanceError) throw attendanceError;
       
-      const attendanceMap: Record<string, AttendanceRecord> = {};
+      const attendanceMap: Record<string, 'present' | 'absent' | 'late' | 'excused'> = {};
       if (attendanceData) {
         attendanceData.forEach((record: AttendanceRecord) => {
-          attendanceMap[record.student_id] = record;
+          attendanceMap[record.student_id] = record.status;
         });
       }
       setAttendance(attendanceMap);
-      
     } catch (error) {
-      console.error('Error fetching attendance data:', error);
+      console.error('Error fetching attendance:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const markAttendance = async (studentId: string, status: 'present' | 'absent' | 'late' | 'excused') => {
+  const setStudentStatus = async (studentId: string, status: 'present' | 'absent' | 'late' | 'excused') => {
+    setAttendance(prev => ({ ...prev, [studentId]: status }));
+
     try {
-      const record = {
-        student_id: studentId,
-        date: selectedDate,
-        status,
-        session_type: sessionType,
-      };
-
-      const { error } = await supabase
+      // Upsert to Supabase
+      const { data: existing } = await supabase
         .from('attendance')
-        .upsert(record, { onConflict: 'student_id,date' });
+        .select('id')
+        .eq('student_id', studentId)
+        .eq('date', selectedDate)
+        .eq('session_type', sessionType)
+        .maybeSingle();
 
-      if (error) throw error;
-
-      // Update local state
-      setAttendance(prev => ({
-        ...prev,
-        [studentId]: { ...prev[studentId], ...record } as AttendanceRecord
-      }));
-    } catch (error) {
-      console.error('Error marking attendance:', error);
-      alert('Gagal menyimpan absensi');
+      if (existing) {
+        await supabase
+          .from('attendance')
+          .update({ status })
+          .eq('id', existing.id);
+      } else {
+        await supabase
+          .from('attendance')
+          .insert([{
+            student_id: studentId,
+            date: selectedDate,
+            session_type: sessionType,
+            status
+          }]);
+      }
+    } catch (err) {
+      console.error('Error updating attendance record:', err);
     }
   };
 
-  const stats = {
-    present: Object.values(attendance).filter(a => a.status === 'present').length,
-    late: Object.values(attendance).filter(a => a.status === 'late').length,
-    excused: Object.values(attendance).filter(a => a.status === 'excused').length,
-    absent: Object.values(attendance).filter(a => a.status === 'absent').length,
+  // Quick 1-tap: Mark all in cohort as present
+  const handleMarkAllPresent = async () => {
+    const targetStudents = filteredStudents;
+    if (targetStudents.length === 0) return;
+
+    const newMap = { ...attendance };
+    targetStudents.forEach(s => {
+      newMap[s.id] = 'present';
+    });
+    setAttendance(newMap);
+
+    try {
+      for (const s of targetStudents) {
+        const { data: existing } = await supabase
+          .from('attendance')
+          .select('id')
+          .eq('student_id', s.id)
+          .eq('date', selectedDate)
+          .eq('session_type', sessionType)
+          .maybeSingle();
+
+        if (existing) {
+          await supabase.from('attendance').update({ status: 'present' }).eq('id', existing.id);
+        } else {
+          await supabase.from('attendance').insert([{
+            student_id: s.id,
+            date: selectedDate,
+            session_type: sessionType,
+            status: 'present'
+          }]);
+        }
+      }
+    } catch (err) {
+      console.error('Batch attendance error:', err);
+    }
   };
-  
-  const totalMarked = stats.present + stats.late + stats.excused + stats.absent;
-  const attendanceRate = totalMarked > 0 
-    ? Math.round(((stats.present + stats.late) / totalMarked) * 100) 
-    : 0;
+
+  // Filtered students
+  const filteredStudents = students.filter(s => {
+    const matchesCohort = selectedCohort === 'ALL' || s.age_cohort === selectedCohort;
+    const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase()) || 
+                          (s.full_name && s.full_name.toLowerCase().includes(search.toLowerCase())) ||
+                          (s.jersey_number && s.jersey_number.toString().includes(search));
+    return matchesCohort && matchesSearch;
+  });
+
+  // Calculate stats
+  const totalInView = filteredStudents.length;
+  const presentCount = filteredStudents.filter(s => attendance[s.id] === 'present').length;
+  const lateCount = filteredStudents.filter(s => attendance[s.id] === 'late').length;
+  const excusedCount = filteredStudents.filter(s => attendance[s.id] === 'excused').length;
+  const absentCount = filteredStudents.filter(s => attendance[s.id] === 'absent').length;
+  const attendedRate = totalInView > 0 ? Math.round(((presentCount + lateCount) / totalInView) * 100) : 0;
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-green-900">Absensi Kehadiran</h1>
-        
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex items-center bg-white border border-gray-300 rounded-lg overflow-hidden shadow-sm">
-            <div className="px-3 text-gray-500 bg-gray-50 border-r border-gray-300">
-              <Calendar size={18} />
+    <div className="p-3 sm:p-6 w-full max-w-5xl mx-auto space-y-4">
+      {/* Mobile-First Header */}
+      <div className="bg-gradient-to-r from-green-950 via-slate-900 to-emerald-950 rounded-2xl p-4 sm:p-6 text-white shadow-md border border-green-800">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-yellow-400 text-green-950 rounded-xl">
+              <Smartphone size={22} />
             </div>
-            <input 
-              type="date" 
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="px-3 py-2 outline-none"
-            />
+            <div>
+              <h1 className="text-lg sm:text-2xl font-bold tracking-tight">Papan Absensi Siswa</h1>
+              <p className="text-xs text-green-200">Presensi cepat sesi latihan & tanding di lapangan</p>
+            </div>
           </div>
-          
-          <select 
-            value={sessionType}
-            onChange={(e) => setSessionType(e.target.value)}
-            className="px-3 py-2 bg-white border border-gray-300 rounded-lg shadow-sm outline-none focus:ring-2 focus:ring-green-500"
-          >
-            <option value="Latihan">Latihan</option>
-            <option value="Pertandingan">Pertandingan</option>
-          </select>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center">
-          <span className="text-gray-500 text-sm">Hadir / Terlambat</span>
-          <span className="text-2xl font-bold text-green-600">{stats.present + stats.late}</span>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center">
-          <span className="text-gray-500 text-sm">Izin</span>
-          <span className="text-2xl font-bold text-yellow-600">{stats.excused}</span>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center">
-          <span className="text-gray-500 text-sm">Tidak Hadir</span>
-          <span className="text-2xl font-bold text-red-600">{stats.absent}</span>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center justify-center">
-          <span className="text-gray-500 text-sm">Tingkat Kehadiran</span>
-          <span className="text-2xl font-bold text-blue-600">{attendanceRate}%</span>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-          <h2 className="font-semibold text-gray-800">
-            Daftar Siswa Aktif - {new Date(selectedDate).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </h2>
-          <div className="text-sm text-gray-500">
-            {totalMarked} / {students.length} tercatat
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleMarkAllPresent}
+              className="bg-yellow-400 hover:bg-yellow-300 text-green-950 font-extrabold px-3.5 py-2 rounded-xl text-xs sm:text-sm shadow-md transition flex items-center gap-1.5"
+            >
+              <CheckCheck size={16} /> Tandai Semua Hadir
+            </button>
           </div>
         </div>
 
-        {loading ? (
-          <div className="p-8 text-center text-gray-500">Memuat data absensi...</div>
-        ) : students.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
-            Tidak ada siswa aktif ditemukan
+        {/* Date, Session Type & Cohort Pills */}
+        <div className="mt-4 pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-xl border border-white/10 text-xs">
+              <Calendar size={14} className="text-yellow-400" />
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="bg-transparent text-white focus:outline-none text-xs font-semibold cursor-pointer"
+              />
+            </div>
+
+            <div className="flex bg-white/10 p-0.5 rounded-xl border border-white/10 text-xs font-semibold">
+              <button
+                onClick={() => setSessionType('training')}
+                className={`px-2.5 py-1 rounded-lg transition ${sessionType === 'training' ? 'bg-yellow-400 text-green-950' : 'text-white'}`}
+              >
+                Latihan
+              </button>
+              <button
+                onClick={() => setSessionType('match')}
+                className={`px-2.5 py-1 rounded-lg transition ${sessionType === 'match' ? 'bg-yellow-400 text-green-950' : 'text-white'}`}
+              >
+                Tanding
+              </button>
+            </div>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-50 text-gray-600 text-sm uppercase tracking-wider border-y border-gray-100">
-                  <th className="px-6 py-3 font-medium">Nama Siswa</th>
-                  <th className="px-6 py-3 font-medium">Cohort</th>
-                  <th className="px-6 py-3 font-medium">Status Absensi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {students.map((student) => {
-                  const currentStatus = attendance[student.id]?.status;
-                  
-                  return (
-                    <tr key={student.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 font-medium text-gray-900">
-                        {student.name}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="bg-gray-100 text-gray-800 py-1 px-2 rounded text-xs font-medium">
-                          {student.age_cohort}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => markAttendance(student.id, 'present')}
-                            className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm transition-colors ${
-                              currentStatus === 'present' 
-                                ? 'bg-green-100 text-green-800 border border-green-200' 
-                                : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'
-                            }`}
-                          >
-                            <CheckCircle size={16} className={currentStatus === 'present' ? 'text-green-600' : ''} />
-                            Hadir
-                          </button>
-                          
-                          <button
-                            onClick={() => markAttendance(student.id, 'late')}
-                            className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm transition-colors ${
-                              currentStatus === 'late' 
-                                ? 'bg-blue-100 text-blue-800 border border-blue-200' 
-                                : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'
-                            }`}
-                          >
-                            <Clock size={16} className={currentStatus === 'late' ? 'text-blue-600' : ''} />
-                            Telat
-                          </button>
-                          
-                          <button
-                            onClick={() => markAttendance(student.id, 'excused')}
-                            className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm transition-colors ${
-                              currentStatus === 'excused' 
-                                ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' 
-                                : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'
-                            }`}
-                          >
-                            <AlertTriangle size={16} className={currentStatus === 'excused' ? 'text-yellow-600' : ''} />
-                            Izin
-                          </button>
-                          
-                          <button
-                            onClick={() => markAttendance(student.id, 'absent')}
-                            className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-sm transition-colors ${
-                              currentStatus === 'absent' 
-                                ? 'bg-red-100 text-red-800 border border-red-200' 
-                                : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'
-                            }`}
-                          >
-                            <XCircle size={16} className={currentStatus === 'absent' ? 'text-red-600' : ''} />
-                            Alpha
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+
+          {/* Cohort Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+            {['U-12', 'U-8', 'U-15', 'U-5', 'ALL'].map(c => (
+              <button
+                key={c}
+                onClick={() => setSelectedCohort(c)}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
+                  selectedCohort === c
+                    ? 'bg-yellow-400 text-green-950 shadow-sm'
+                    : 'bg-white/10 text-white hover:bg-white/20'
+                }`}
+              >
+                {c === 'ALL' ? 'Semua' : c}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
+
+        {/* Attendance Counter Bar */}
+        <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-green-200">Kehadiran:</span>
+            <strong className="text-yellow-400 font-extrabold text-sm">
+              {presentCount + lateCount} / {totalInView} Siswa ({attendedRate}%)
+            </strong>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px]">
+            <span className="text-emerald-400 font-bold">🟢 {presentCount} Hadir</span>
+            <span className="text-amber-300 font-bold">🟡 {lateCount} Terlambat</span>
+            <span className="text-blue-300 font-bold">🔵 {excusedCount} Izin</span>
+            <span className="text-rose-400 font-bold">🔴 {absentCount} Alpa</span>
+          </div>
+        </div>
       </div>
+
+      {/* Search Input */}
+      <div className="relative">
+        <Search size={16} className="absolute left-3.5 top-3 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Cari siswa atau no punggung..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:outline-none shadow-sm"
+        />
+      </div>
+
+      {/* STUDENT CARDS (LARGE TOUCH TARGETS FOR SMARTPHONE COACHES) */}
+      {loading ? (
+        <div className="p-12 text-center text-gray-500 text-sm font-medium">Memuat absensi siswa...</div>
+      ) : filteredStudents.length === 0 ? (
+        <div className="p-10 text-center text-gray-400 bg-white rounded-2xl border border-gray-100 shadow-sm text-sm">
+          Tidak ada siswa ditemukan di kelas {selectedCohort}.
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {filteredStudents.map(student => {
+            const currentStatus = attendance[student.id];
+
+            return (
+              <div
+                key={student.id}
+                className="bg-white rounded-2xl p-3.5 border border-gray-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition"
+              >
+                {/* Student Info */}
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-green-900 text-yellow-400 font-black flex flex-col items-center justify-center shrink-0 border border-green-800">
+                    <span className="text-[8px] uppercase tracking-wider text-green-200 leading-none">NO</span>
+                    <span className="text-base font-extrabold leading-none mt-0.5">
+                      {student.jersey_number || '-'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="font-bold text-gray-900 text-base leading-tight">
+                      {student.name}
+                    </div>
+                    <div className="text-xs text-gray-500 truncate max-w-[200px]">
+                      {student.full_name}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4 Big Thumb Buttons for Status (44px min height) */}
+                <div className="grid grid-cols-4 gap-1.5 sm:w-80">
+                  {/* Hadir */}
+                  <button
+                    onClick={() => setStudentStatus(student.id, 'present')}
+                    className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 border ${
+                      currentStatus === 'present'
+                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm scale-105'
+                        : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                    }`}
+                  >
+                    <CheckCircle2 size={14} /> Hadir
+                  </button>
+
+                  {/* Terlambat */}
+                  <button
+                    onClick={() => setStudentStatus(student.id, 'late')}
+                    className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 border ${
+                      currentStatus === 'late'
+                        ? 'bg-amber-500 text-white border-amber-600 shadow-sm scale-105'
+                        : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                    }`}
+                  >
+                    <Clock size={14} /> Telat
+                  </button>
+
+                  {/* Izin/Sakit */}
+                  <button
+                    onClick={() => setStudentStatus(student.id, 'excused')}
+                    className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 border ${
+                      currentStatus === 'excused'
+                        ? 'bg-blue-600 text-white border-blue-700 shadow-sm scale-105'
+                        : 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100'
+                    }`}
+                  >
+                    <Sparkles size={14} /> Izin
+                  </button>
+
+                  {/* Alpa */}
+                  <button
+                    onClick={() => setStudentStatus(student.id, 'absent')}
+                    className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 border ${
+                      currentStatus === 'absent'
+                        ? 'bg-rose-600 text-white border-rose-700 shadow-sm scale-105'
+                        : 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100'
+                    }`}
+                  >
+                    Alpa
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

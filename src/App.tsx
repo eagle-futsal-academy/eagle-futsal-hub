@@ -14,6 +14,8 @@ import Finance from './pages/Finance'
 import Marketing from './pages/Marketing'
 import Advisory from './pages/Advisory'
 import Events from './pages/Events'
+import CoachScoring from './pages/coach/CoachScoring'
+import CoachAttendance from './pages/coach/CoachAttendance'
 import { useData } from './contexts/DataContext'
 import { useEffect } from 'react'
 
@@ -45,6 +47,8 @@ export default function App() {
           <Route path="/advisory" element={<Advisory />} />
           <Route path="/events" element={<Events />} />
           <Route path="/marketing" element={<Marketing />} />
+          <Route path="/coach/scoring" element={<CoachScoring />} />
+          <Route path="/coach/attendance" element={<CoachAttendance />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
         <Route path="/academy/invoice/print/:id" element={<InvoicePrint />} />
