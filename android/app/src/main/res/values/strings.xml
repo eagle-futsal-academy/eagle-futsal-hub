@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Eagle Futsal</string>
+    <string name="title_activity_main">Eagle Futsal</string>
+    <string name="package_name">com.eaglefutsal.app</string>
+    <string name="custom_url_scheme">com.eaglefutsal.app</string>
+</resources>
